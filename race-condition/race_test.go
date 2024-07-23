@@ -34,3 +34,7 @@ func TestDataRaceConditionsWithAtomicValues(t *testing.T) {
 
 // run: go test race_test.go --race
 // to check for race conditions
+
+// atomic values will be faster than mutexes because they only lock
+// the memory for the operation being done, while mutexes lock the
+// memory for the entire block of code
