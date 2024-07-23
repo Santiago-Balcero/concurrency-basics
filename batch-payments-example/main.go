@@ -1,5 +1,8 @@
 package main
 
+// Producer consumer pattern
+// https://medium.com/@nirajranasinghe/design-patterns-for-concurrent-programming-producer-consumer-pattern-39193cac195a
+
 import (
 	"fmt"
 	"math/rand"
@@ -37,11 +40,12 @@ func getRandomInt(min, max int) int {
 func getPendingPayments() []Payment {
 	fmt.Println("Getting pending payments...")
 	now := time.Now()
-	payments := []Payment{}
-	for i := 0; i < getRandomInt(1000, 1005); i++ {
+	// Preallocates a slice of random length with pending payments
+	// to avoid multiple allocations
+	payments := make([]Payment, 1000)
+	for i := range payments {
 		payment := Payment{
 			paymentID:     i,
-			paymentMethod: PaymentMethod(getRandomInt(1, 3)),
 			paymentStatus: pending,
 			updatedAt:     time.Now(),
 		}
@@ -53,15 +57,15 @@ func getPendingPayments() []Payment {
 		} else {
 			payment.paymentMethod = ach
 		}
-		payments = append(payments, payment)
+		payments[i] = payment
 	}
 	fmt.Printf("Got %d pending payments\n", len(payments))
 	fmt.Println("Getting pending payments took:", time.Since(now))
 	return payments
 }
 
-func processPayment(payment Payment, paych chan Payment, wg *sync.WaitGroup) {
-	time.Sleep(time.Duration(getRandomInt(50, 300)) * time.Millisecond)
+func processPayment(payment Payment, paych chan<- Payment, wg *sync.WaitGroup) {
+	time.Sleep(200 * time.Millisecond)
 	newStatus := getRandomInt(1, 2)
 	if newStatus == 1 {
 		payment.paymentStatus = approved
@@ -72,7 +76,7 @@ func processPayment(payment Payment, paych chan Payment, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func processPayments(payments []Payment, paych chan Payment, wg *sync.WaitGroup) {
+func processPayments(payments []Payment, paych chan<- Payment) {
 	now := time.Now()
 	paywg := &sync.WaitGroup{}
 	for _, payment := range payments {
@@ -82,29 +86,29 @@ func processPayments(payments []Payment, paych chan Payment, wg *sync.WaitGroup)
 	paywg.Wait()
 	close(paych)
 	fmt.Println("Processing payments took:", time.Since(now))
-	wg.Done()
 }
 
-func sendNotifications(paych chan Payment, wg *sync.WaitGroup) {
+func sendNotification() {
+	time.Sleep(200 * time.Millisecond)
+}
+
+func sendNotifications(paych <-chan Payment) {
 	now := time.Now()
 	counter := 0
 	for range paych {
-		time.Sleep(time.Duration(getRandomInt(50, 300)) * time.Millisecond)
+		go sendNotification()
 		counter++
 	}
 	fmt.Printf("Sending %d notifications took: %v\n", counter, time.Since(now))
-	wg.Done()
 }
 
 func main() {
 	fmt.Println("Batch payments example!")
 	now := time.Now()
 	payments := getPendingPayments()
-	paych := make(chan Payment)
-	wg := &sync.WaitGroup{}
-	wg.Add(2)
-	go processPayments(payments, paych, wg)
-	go sendNotifications(paych, wg)
-	wg.Wait()
+	// Buffered channel to allow non-blocking sends
+	paych := make(chan Payment, len(payments))
+	go processPayments(payments, paych)
+	sendNotifications(paych)
 	fmt.Println("Total time:", time.Since(now))
 }
